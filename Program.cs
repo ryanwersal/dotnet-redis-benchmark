@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Net;
 using System.Threading;
@@ -115,6 +116,37 @@ namespace DotnetRedisBenchmark
             await Task.WhenAll(clientTasks);
         }
 
+        private static async Task ExecuteTest(
+            string operation, Func<Task> testFunc, int clientNumber, BenchmarkConfiguration config, CancellationToken ct)
+        {
+            if (ct.IsCancellationRequested) return;
+
+            var stopwatch = new Stopwatch();
+            stopwatch.Start();
+
+            for (var i = 0; i < config.RequestCount; ++i)
+            {
+                if (i % 100 == 0)
+                {
+                    if (Log.IsEnabled(LogEventLevel.Debug))
+                    {
+                        Log.Verbose("Client #{ClientNumber} has sent {Number} of {Total} {Operation}.",
+                                    clientNumber, i, config.RequestCount, operation);
+                    }
+
+                    if (ct.IsCancellationRequested) break;
+                }
+
+                await testFunc();
+            }
+
+            stopwatch.Stop();
+
+            var requestsPerSecond = config.RequestCount / stopwatch.Elapsed.TotalSeconds;
+
+            Log.Information("{Operation}: {RequestPerSecond} requests per second", operation, requestsPerSecond);
+        }
+
         private static async Task CreateClient(int clientNumber, BenchmarkConfiguration config, CancellationToken ct)
         {
             Log.Verbose("Creating client #{ClientNumber}...", clientNumber);
@@ -136,40 +168,21 @@ namespace DotnetRedisBenchmark
                 var rnd = new Random((int)seedDateTimeOffset.ToUnixTimeSeconds());
                 var bytes = new byte[(int)config.ValueSize.Bytes];
 
-                if (ct.IsCancellationRequested) return;
-
-                for (var i = 0; i < config.RequestCount; ++i)
+                await ExecuteTest("PING", async () =>
                 {
-                    if (i % 100 == 0)
-                    {
-                        if (Log.IsEnabled(LogEventLevel.Debug))
-                        {
-                            Log.Verbose("Client #{ClientNumber} has sent {Number} of {Total} {Operation}.",
-                                clientNumber, i, config.RequestCount, "SET");
-                        }
+                    await db.PingAsync();
+                }, clientNumber, config, ct);
 
-                        if (ct.IsCancellationRequested) break;
-                    }
-
+                await ExecuteTest("SET", async () => 
+                {
                     rnd.NextBytes(bytes);
                     await db.StringSetAsync(GetKey(rnd, config.KeyspaceLength, "foo"), bytes);
-                }
+                }, clientNumber, config, ct);
 
-                for (var i = 0; i < config.RequestCount; ++i)
+                await ExecuteTest("GET", async () =>
                 {
-                    if (i % 100 == 0)
-                    {
-                        if (Log.IsEnabled(LogEventLevel.Debug))
-                        {
-                            Log.Verbose("Client #{ClientNumber} has sent {Number} of {Total} {Operation}.",
-                                clientNumber, i, config.RequestCount, "GET");
-                        }
-
-                        if (ct.IsCancellationRequested) break;
-                    }
-
                     await db.StringGetAsync(GetKey(rnd, config.KeyspaceLength, "foo"));
-                }
+                }, clientNumber, config, ct);
             }
 
             Log.Verbose("Client #{ClientNumber} finished.", clientNumber);
