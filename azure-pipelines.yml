@@ -8,7 +8,7 @@ jobs:
   - script: docker run -d --name test-redis --rm -p 6379:6379 redis:5
     displayName: 'Start Redis docker container'
 
-  - script: StackExchangeRedisVersion=1.2.6 dotnet run -- -c 10 -n 1000 -d 3B
+  - script: StackExchangeRedisVersion=1.2.6 dotnet run -- -c 25 -n 10000 -d 3B -q
     displayName: 'Execute benchmark'
 
   - script: docker container kill test-redis
@@ -23,7 +23,7 @@ jobs:
   - script: docker run -d --name test-redis --rm -p 6379:6379 redis:4
     displayName: 'Start Redis docker container'
 
-  - script: StackExchangeRedisVersion=1.2.6 dotnet run -- -c 10 -n 1000 -d 3B
+  - script: StackExchangeRedisVersion=1.2.6 dotnet run -- -c 25 -n 10000 -d 3B -q
     displayName: 'Execute benchmark'
 
   - script: docker container kill test-redis
@@ -38,7 +38,7 @@ jobs:
   - script: docker run -d --name test-redis --rm -p 6379:6379 redis:5
     displayName: 'Start Redis docker container'
 
-  - script: StackExchangeRedisVersion=2.0.513 dotnet run -- -c 10 -n 1000 -d 3B
+  - script: StackExchangeRedisVersion=2.0.513 dotnet run -- -c 25 -n 10000 -d 3B -q
     displayName: 'Execute benchmark'
 
   - script: docker container kill test-redis
@@ -53,7 +53,7 @@ jobs:
   - script: docker run -d --name test-redis --rm -p 6379:6379 redis:4
     displayName: 'Start Redis docker container'
 
-  - script: StackExchangeRedisVersion=2.0.513 dotnet run -- -c 10 -n 1000 -d 3B
+  - script: StackExchangeRedisVersion=2.0.513 dotnet run -- -c 25 -n 10000 -d 3B -q
     displayName: 'Execute benchmark'
 
   - script: docker container kill test-redis
