@@ -1,6 +1,6 @@
 jobs:
 - job: Redis5Linuxv126
-  displayName: 'Redis 5 on Linux'
+  displayName: 'Redis 5 (1.2.6) on Linux'
   pool:
     vmImage: 'Ubuntu 16.04'
 
@@ -8,14 +8,14 @@ jobs:
   - script: docker run -d --name test-redis --rm -p 6379:6379 redis:5
     displayName: 'Start Redis docker container'
 
-  - script: StackExchangeRedisVersion=1.2.6 dotnet run -- -c 25 -n 10000 -d 3B -q
+  - script: StackExchangeRedisVersion=1.2.6 dotnet run -- --clients 25 --num-requests 10000 --data-size 3B --quiet
     displayName: 'Execute benchmark'
 
   - script: docker container kill test-redis
     displayName: 'Cleanup Redis docker container'
 
 - job: Redis4Linuxv126
-  displayName: 'Redis 4 on Linux'
+  displayName: 'Redis 4 (1.2.6) on Linux'
   pool:
     vmImage: 'Ubuntu 16.04'
 
@@ -23,14 +23,14 @@ jobs:
   - script: docker run -d --name test-redis --rm -p 6379:6379 redis:4
     displayName: 'Start Redis docker container'
 
-  - script: StackExchangeRedisVersion=1.2.6 dotnet run -- -c 25 -n 10000 -d 3B -q
+  - script: StackExchangeRedisVersion=1.2.6 dotnet run -- --clients 25 --num-requests 10000 --data-size 3B --quiet
     displayName: 'Execute benchmark'
 
   - script: docker container kill test-redis
     displayName: 'Cleanup Redis docker container'
 
 - job: Redis3Linuxv126
-  displayName: 'Redis 3 on Linux'
+  displayName: 'Redis 3 (1.2.6) on Linux'
   pool:
     vmImage: 'Ubuntu 16.04'
 
@@ -38,14 +38,14 @@ jobs:
   - script: docker run -d --name test-redis --rm -p 6379:6379 redis:3
     displayName: 'Start Redis docker container'
 
-  - script: StackExchangeRedisVersion=1.2.6 dotnet run -- -c 25 -n 10000 -d 3B -q
+  - script: StackExchangeRedisVersion=1.2.6 dotnet run -- --clients 25 --num-requests 10000 --data-size 3B --quiet
     displayName: 'Execute benchmark'
 
   - script: docker container kill test-redis
     displayName: 'Cleanup Redis docker container'
 
 - job: Redis5Linuxv20513
-  displayName: 'Redis 5 on Linux'
+  displayName: 'Redis 5 (2.0.513) on Linux'
   pool:
     vmImage: 'Ubuntu 16.04'
 
@@ -53,14 +53,14 @@ jobs:
   - script: docker run -d --name test-redis --rm -p 6379:6379 redis:5
     displayName: 'Start Redis docker container'
 
-  - script: StackExchangeRedisVersion=2.0.513 dotnet run -- -c 25 -n 10000 -d 3B -q
+  - script: StackExchangeRedisVersion=2.0.513 dotnet run -- --clients 25 --num-requests 10000 --data-size 3B --quiet
     displayName: 'Execute benchmark'
 
   - script: docker container kill test-redis
     displayName: 'Cleanup Redis docker container'
 
 - job: Redis4Linuxv20513
-  displayName: 'Redis 4 on Linux'
+  displayName: 'Redis 4 (2.0.513) on Linux'
   pool:
     vmImage: 'Ubuntu 16.04'
 
@@ -68,14 +68,14 @@ jobs:
   - script: docker run -d --name test-redis --rm -p 6379:6379 redis:4
     displayName: 'Start Redis docker container'
 
-  - script: StackExchangeRedisVersion=2.0.513 dotnet run -- -c 25 -n 10000 -d 3B -q
+  - script: StackExchangeRedisVersion=2.0.513 dotnet run -- --clients 25 --num-requests 10000 --data-size 3B --quiet
     displayName: 'Execute benchmark'
 
   - script: docker container kill test-redis
     displayName: 'Cleanup Redis docker container'
 
 - job: Redis3Linuxv20513
-  displayName: 'Redis 3 on Linux'
+  displayName: 'Redis 3 (2.0.513) on Linux'
   pool:
     vmImage: 'Ubuntu 16.04'
 
@@ -83,7 +83,7 @@ jobs:
   - script: docker run -d --name test-redis --rm -p 6379:6379 redis:3
     displayName: 'Start Redis docker container'
 
-  - script: StackExchangeRedisVersion=2.0.513 dotnet run -- -c 25 -n 10000 -d 3B -q
+  - script: StackExchangeRedisVersion=2.0.513 dotnet run -- --clients 25 --num-requests 10000 --data-size 3B --quiet
     displayName: 'Execute benchmark'
 
   - script: docker container kill test-redis
