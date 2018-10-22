@@ -62,15 +62,11 @@ namespace DotnetRedisBenchmark
                     config.Endpoint = new IPEndPoint(host, port);
                 }
 
-                //if (testsOption.HasValue()) 
-                //{
-                //    var tests = testsOption.Value().Split(",");
-                //    config.Benchmarks = new HashSet<BenchmarkTests>();
-                //    foreach (var test in testsOption.Value().Split(","))
-                //    {
-                //        config.Benchmarks.Add(Enum.Parse<BenchmarkTests>(test));
-                //    }
-                //}
+                if (testsOption.HasValue())
+                {
+                    var tests = testsOption.Value().ToLower().Split(",");
+                    config.BenchmarkTests = new HashSet<string>(tests);
+                }
 
                 if (passwordOption.HasValue()) config.Password = passwordOption.Value();
                 if (clientsOption.HasValue()) config.ClientCount = int.Parse(clientsOption.Value());
@@ -90,7 +86,7 @@ namespace DotnetRedisBenchmark
                     .WriteTo.Console()
                     .CreateLogger();
 
-                await ExecuteBenchmark(config);
+                await ExecuteBenchmarks(config);
 
                 return 0;
             });
@@ -98,59 +94,103 @@ namespace DotnetRedisBenchmark
             app.Execute(args);
         }
 
-        private static async Task ExecuteBenchmark(BenchmarkConfiguration config)
+        private static async Task ExecuteBenchmarks(BenchmarkConfiguration config)
         {
             // redis-benchmark -h 10.0.75.1 -p 31002 -q -n 100000
             var cts = new CancellationTokenSource();
 
-            var clientTasks = Enumerable.Range(0, config.ClientCount).Select(clientNumber =>
+            if (config.IsBenchmarkEnabled("ping"))
+            {
+                await ExecuteTest("PING", async client =>
+                {
+                    await client.Db.PingAsync();
+                }, config, cts.Token);
+            }
+
+            if (config.IsBenchmarkEnabled("set"))
+            {
+                await ExecuteTest("SET", async client =>
+                {
+                    client.Random.NextBytes(client.Bytes);
+                    await client.Db.StringSetAsync(client.GetKey("foo"), client.Bytes);
+                }, config, cts.Token);
+            }
+
+            if (config.IsBenchmarkEnabled("get"))
+            {
+                await ExecuteTest("GET", async client =>
+                {
+                    await client.Db.StringGetAsync(client.GetKey("foo"));
+                }, config, cts.Token);
+            }
+
+            if (config.IsBenchmarkEnabled("del"))
+            {
+                await ExecuteTest("DEL", async client =>
+                {
+                    await client.Db.KeyDeleteAsync(client.GetKey("foo"));
+                }, config, cts.Token);
+            }
+        }
+
+        private static async Task ExecuteTest(
+            string operation, Func<RedisClient, Task> testFunc, BenchmarkConfiguration config, CancellationToken ct)
+        {
+            if (ct.IsCancellationRequested) return;
+
+            var clients = await CreateClients(config, ct);
+
+            var testTasks = clients.Select(client =>
             {
                 return Task.Factory.StartNew(
-                    () => CreateClient(clientNumber, config, cts.Token),
-                    cts.Token, 
-                    TaskCreationOptions.LongRunning, 
+                    async () =>
+                    {
+                        for (var i = 0; i < config.RequestCount; ++i)
+                        {
+                            if (i % 100 == 0)
+                            {
+                                if (Log.IsEnabled(LogEventLevel.Debug))
+                                {
+                                    Log.Verbose("Client #{ClientNumber} has sent {Number} of {Total} {Operation}.",
+                                                client.ClientNumber, i, config.RequestCount, operation);
+                                }
+
+                                if (ct.IsCancellationRequested) break;
+                            }
+
+                            await testFunc(client);
+                        }
+                    },
+                    ct,
+                    TaskCreationOptions.LongRunning,
                     TaskScheduler.Default
                 ).Unwrap();
             });
 
-            await Task.WhenAll(clientTasks);
-        }
-
-        private static async Task ExecuteTest(
-            string operation, Func<Task> testFunc, int clientNumber, BenchmarkConfiguration config, CancellationToken ct)
-        {
-            if (ct.IsCancellationRequested) return;
-
             var stopwatch = new Stopwatch();
             stopwatch.Start();
 
-            for (var i = 0; i < config.RequestCount; ++i)
-            {
-                if (i % 100 == 0)
-                {
-                    if (Log.IsEnabled(LogEventLevel.Debug))
-                    {
-                        Log.Verbose("Client #{ClientNumber} has sent {Number} of {Total} {Operation}.",
-                                    clientNumber, i, config.RequestCount, operation);
-                    }
-
-                    if (ct.IsCancellationRequested) break;
-                }
-
-                await testFunc();
-            }
+            await Task.WhenAll(testTasks);
 
             stopwatch.Stop();
 
-            var requestsPerSecond = config.RequestCount / stopwatch.Elapsed.TotalSeconds;
+            var totalRequests = config.ClientCount * config.RequestCount;
+            var requestsPerSecond = totalRequests / stopwatch.Elapsed.TotalSeconds;
 
-            Log.Information("{Operation}: {RequestPerSecond} requests per second", operation, requestsPerSecond);
+            Log.Information("{Operation}: {RequestPerSecond:F3} requests per second ({TotalRequests} requests over {TotalRuntime:F3} seconds)", 
+                operation, requestsPerSecond, totalRequests, stopwatch.Elapsed.TotalSeconds);
         }
 
-        private static async Task CreateClient(int clientNumber, BenchmarkConfiguration config, CancellationToken ct)
+        private static async Task<IEnumerable<RedisClient>> CreateClients(BenchmarkConfiguration config, CancellationToken ct)
         {
-            Log.Verbose("Creating client #{ClientNumber}...", clientNumber);
+            var clientTasks = Enumerable.Range(0, config.ClientCount).Select(num => CreateClient(num, config, ct));
 
+            // Wait for all connections to be initialized
+            return await Task.WhenAll(clientTasks);
+        }
+
+        private static async Task<RedisClient> CreateClient(int clientNumber, BenchmarkConfiguration config, CancellationToken ct)
+        {
             var options = new ConfigurationOptions
             {
                 Password = config.Password,
@@ -159,38 +199,40 @@ namespace DotnetRedisBenchmark
             };
             options.EndPoints.Add(config.Endpoint);
 
-            using (var connection = await ConnectionMultiplexer.ConnectAsync(options))
+            var connection = await ConnectionMultiplexer.ConnectAsync(options);
+
+            var faker = new Faker();
+            var seedDateTimeOffset = faker.Date.BetweenOffset(DateTimeOffset.MinValue, DateTimeOffset.MaxValue);
+            var rnd = new Random((int)seedDateTimeOffset.ToUnixTimeSeconds());
+            var bytes = new byte[(int)config.ValueSize.Bytes];
+
+            return new RedisClient
             {
-                var db = connection.GetDatabase();
-
-                var faker = new Faker();
-                var seedDateTimeOffset = faker.Date.BetweenOffset(DateTimeOffset.MinValue, DateTimeOffset.MaxValue);
-                var rnd = new Random((int)seedDateTimeOffset.ToUnixTimeSeconds());
-                var bytes = new byte[(int)config.ValueSize.Bytes];
-
-                await ExecuteTest("PING", async () =>
-                {
-                    await db.PingAsync();
-                }, clientNumber, config, ct);
-
-                await ExecuteTest("SET", async () => 
-                {
-                    rnd.NextBytes(bytes);
-                    await db.StringSetAsync(GetKey(rnd, config.KeyspaceLength, "foo"), bytes);
-                }, clientNumber, config, ct);
-
-                await ExecuteTest("GET", async () =>
-                {
-                    await db.StringGetAsync(GetKey(rnd, config.KeyspaceLength, "foo"));
-                }, clientNumber, config, ct);
-            }
-
-            Log.Verbose("Client #{ClientNumber} finished.", clientNumber);
+                ClientNumber = clientNumber,
+                Config = config,
+                Connection = connection,
+                Db = connection.GetDatabase(config.DatabaseNumber),
+                Faker = faker,
+                Random = rnd,
+                Bytes = bytes,
+            };
         }
+    }
 
-        private static string GetKey(Random rnd, int maxValue, string key)
+    public class RedisClient
+    {
+        public int ClientNumber { get; set; }
+        public BenchmarkConfiguration Config { get; set; }
+
+        public ConnectionMultiplexer Connection { get; set; }
+        public IDatabase Db { get; set; }
+        public Faker Faker { get; set; }
+        public Random Random { get; set; }
+        public byte[] Bytes { get; set; }
+
+        public string GetKey(string key)
         {
-            return $"{rnd.Next(0, maxValue):000000000000}{key}";
+            return $"{Random.Next(0, Config.KeyspaceLength):000000000000}{key}";
         }
     }
 
@@ -208,7 +250,15 @@ namespace DotnetRedisBenchmark
         public bool QuietOutput { get; set; } = false;
         public bool UseCsvOutput { get; set; } = false;
         public bool LoopIndefinitely { get; set; } = false;
+        public ISet<string> BenchmarkTests { get; set; }
         public bool IdleConnections { get; set; } = false;
+
+        public bool IsBenchmarkEnabled(string test)
+        {
+            if (BenchmarkTests == null) return true;
+
+            return BenchmarkTests.Contains(test.ToLower());
+        }
     }
 
     public enum KeepAliveOptions
